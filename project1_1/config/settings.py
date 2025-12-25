@@ -86,12 +86,11 @@ class AppConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """项目配置管理"""
-    # 统一配置所有嵌套模型，不需要单独初始化
-    openai: OpenAIConfig
-    amap: AMapConfig
-    tavily: TavilyConfig
-    redis: RedisConfig
-    app: AppConfig
+    openai: OpenAIConfig = OpenAIConfig()
+    amap: AMapConfig = AMapConfig()
+    tavily: TavilyConfig = TavilyConfig()
+    redis: RedisConfig = RedisConfig()
+    app: AppConfig = AppConfig()
     
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -114,5 +113,4 @@ class Settings(BaseSettings):
 
 # 创建全局配置实例
 settings = Settings()
-
 
