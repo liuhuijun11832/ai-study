@@ -22,7 +22,7 @@ config_list = [
     {
         "model": "gpt-4o",
         "api_key": api_key,
-        "base_url": "https://api.gpt-4.com/"
+        "base_url": "https://api.vveai.com/v1"
     }
 ]
 
