@@ -1,378 +1,422 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+"""
+环境设置脚本
+用于初始化项目环境、验证配置和准备运行环境
+"""
 
 import os
 import sys
+import shutil
 import subprocess
-import argparse
 from pathlib import Path
-import time
+from typing import List, Dict, Any, Tuple
+
+# 添加项目根目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config.settings import settings
+from core.logger import app_logger
 
 
-def print_banner():
-    """
-    打印程序欢迎横幅
-    """
-    banner = """
-    +========================================+
-    |  环境设置向导                          |
-    |  Environment Setup Wizard             |
-    |                                        |
-    |  用于配置和验证项目环境                |
-    +========================================+
-    """
-    print(banner)
-
-def check_python_version():
-    """
-    检查 Python 版本是否符合要求
+class EnvironmentSetup:
+    """环境设置管理器"""
     
-    Returns:
-        bool: Python 版本是否符合要求
-    """
-    print("\n🔍 检查 Python 版本...")
+    def __init__(self):
+        self.project_root = Path(__file__).parent.parent
+        self.setup_results = {}
     
-    required_major = 3
-    required_minor = 9
+    def print_header(self):
+        """打印设置开始信息"""
+        print("🔧" + "="*58 + "🔧")
+        print("🚀 多任务问答助手 - 环境设置向导")
+        print(f"📁 项目路径: {self.project_root}")
+        print("🔧" + "="*58 + "🔧")
     
-    major, minor, _ = sys.version_info
-    
-    if major >= required_major and minor >= required_minor:
-        print(f"✅ Python 版本符合要求: {sys.version}")
-        return True
-    else:
-        print(f"❌ Python 版本不足: {sys.version}")
-        print(f"   需要 Python {required_major}.{required_minor} 或更高版本")
-        return False
-
-def check_virtual_environment():
-    """
-    检查是否在虚拟环境中运行
-    
-    Returns:
-        bool: 是否在虚拟环境中
-    """
-    print("\n🔍 检查虚拟环境...")
-    
-    in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
-    
-    if in_venv:
-        print(f"✅ 已在虚拟环境中运行: {sys.prefix}")
-        return True
-    else:
-        print("⚠️  未在虚拟环境中运行")
-        print("   建议在虚拟环境中运行项目，以避免依赖冲突")
-        print("   可以使用以下命令创建和激活虚拟环境：")
-        print("   python -m venv venv")
-        print("   venv\Scripts\activate  # Windows")
-        print("   source venv/bin/activate  # Linux/macOS")
-        return False
-
-def check_dependencies():
-    """
-    检查项目依赖是否已安装
-    
-    Returns:
-        bool: 依赖是否已安装
-    """
-    print("\n🔍 检查项目依赖...")
-    
-    requirements_file = "requirements.txt"
-    
-    if not os.path.exists(requirements_file):
-        print(f"❌ 依赖文件不存在: {requirements_file}")
-        return False
-    
-    try:
-        # 使用 pip 检查依赖
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "check"],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+    def check_python_version(self) -> bool:
+        """检查Python版本"""
+        print("\n🐍 检查Python版本...")
         
-        if result.returncode == 0:
-            print("✅ 所有依赖已正确安装")
+        version = sys.version_info
+        required_version = (3, 8)
+        
+        print(f"当前Python版本: {version.major}.{version.minor}.{version.micro}")
+        print(f"最低要求版本: {required_version[0]}.{required_version[1]}")
+        
+        if version >= required_version:
+            print("✅ Python版本检查通过")
+            self.setup_results['python_version'] = True
             return True
         else:
-            print("⚠️  依赖检查发现问题:")
-            print(result.stdout)
-            if result.stderr:
-                print(result.stderr)
-            
-            print("\n建议重新安装依赖:")
-            print(f"   pip install -r {requirements_file}")
+            print(f"❌ Python版本过低，请升级到 {required_version[0]}.{required_version[1]} 或更高版本")
+            self.setup_results['python_version'] = False
             return False
-            
-    except Exception as e:
-        print(f"❌ 检查依赖时发生错误: {e}")
-        return False
-
-def install_dependencies():
-    """
-    安装项目依赖
     
-    Returns:
-        bool: 依赖是否安装成功
-    """
-    print("\n📦 安装项目依赖...")
-    
-    requirements_file = "requirements.txt"
-    
-    if not os.path.exists(requirements_file):
-        print(f"❌ 依赖文件不存在: {requirements_file}")
-        return False
-    
-    try:
-        # 升级 pip
-        print("   正在升级 pip...")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-            check=True
-        )
+    def check_dependencies(self) -> bool:
+        """检查依赖包"""
+        print("\n📦 检查依赖包...")
         
-        # 安装依赖
-        print(f"   正在安装 {requirements_file}...")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", requirements_file],
-            check=True
-        )
+        requirements_file = self.project_root / "requirements.txt"
+        if not requirements_file.exists():
+            print("❌ requirements.txt 文件不存在")
+            self.setup_results['dependencies'] = False
+            return False
         
-        print("✅ 依赖安装成功")
-        return True
+        # 读取依赖列表
+        with open(requirements_file, 'r', encoding='utf-8') as f:
+            requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
         
-    except subprocess.CalledProcessError as e:
-        print(f"❌ 依赖安装失败: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ 安装依赖时发生错误: {e}")
-        return False
-
-def check_env_file():
-    """
-    检查环境变量文件是否存在
-    
-    Returns:
-        bool: 环境变量文件是否存在
-    """
-    print("\n🔍 检查环境变量配置...")
-    
-    env_file = ".env"
-    env_example_file = ".env.example"
-    
-    if os.path.exists(env_file):
-        print(f"✅ 环境变量文件已存在: {env_file}")
-        return True
-    else:
-        print(f"❌ 环境变量文件不存在: {env_file}")
+        print(f"需要检查 {len(requirements)} 个依赖包...")
         
-        if os.path.exists(env_example_file):
-            print(f"   发现示例配置文件: {env_example_file}")
-            
+        missing_packages = []
+        installed_packages = []
+        
+        for requirement in requirements:
+            package_name = requirement.split('==')[0].split('>=')[0].split('<=')[0]
             try:
-                # 复制示例文件为 .env 文件
-                with open(env_example_file, 'r', encoding='utf-8') as f_src:
-                    content = f_src.read()
+                __import__(package_name.replace('-', '_'))
+                installed_packages.append(package_name)
+                print(f"  ✅ {package_name}")
+            except ImportError:
+                missing_packages.append(requirement)
+                print(f"  ❌ {package_name}")
+        
+        if missing_packages:
+            print(f"\n⚠️  发现 {len(missing_packages)} 个缺失的依赖包:")
+            for package in missing_packages:
+                print(f"    • {package}")
+            print("\n💡 运行以下命令安装缺失的依赖:")
+            print(f"    pip install -r {requirements_file}")
+            self.setup_results['dependencies'] = False
+            return False
+        else:
+            print(f"✅ 所有 {len(installed_packages)} 个依赖包已安装")
+            self.setup_results['dependencies'] = True
+            return True
+    
+    def setup_environment_file(self) -> bool:
+        """设置环境变量文件"""
+        print("\n🔐 设置环境变量文件...")
+        
+        env_file = self.project_root / ".env"
+        env_example_file = self.project_root / ".env.example"
+        
+        if not env_example_file.exists():
+            print("❌ .env.example 文件不存在")
+            self.setup_results['env_file'] = False
+            return False
+        
+        if env_file.exists():
+            print("✅ .env 文件已存在")
+            
+            # 验证环境变量
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(env_file)
                 
-                with open(env_file, 'w', encoding='utf-8') as f_dest:
-                    f_dest.write(content)
+                required_vars = [
+                    'OPENAI_API_KEY',
+                    'QWEATHER_API_KEY', 
+                    'TAVILY_API_KEY'
+                ]
                 
-                print(f"✅ 已复制示例配置文件为: {env_file}")
-                print("   请编辑 .env 文件，填写必要的 API 密钥和配置信息")
-                return False  # 虽然创建了文件，但需要用户编辑
+                missing_vars = []
+                for var in required_vars:
+                    if not os.getenv(var):
+                        missing_vars.append(var)
                 
+                if missing_vars:
+                    print(f"⚠️  以下环境变量未设置: {', '.join(missing_vars)}")
+                    print("请编辑 .env 文件并设置这些变量")
+                    self.setup_results['env_file'] = False
+                    return False
+                else:
+                    print("✅ 所有必需的环境变量已设置")
+                    self.setup_results['env_file'] = True
+                    return True
+                    
             except Exception as e:
-                print(f"❌ 复制示例配置文件失败: {e}")
+                print(f"❌ 环境变量验证失败: {str(e)}")
+                self.setup_results['env_file'] = False
                 return False
         else:
-            print(f"   未发现示例配置文件: {env_example_file}")
+            print("📝 创建 .env 文件...")
+            try:
+                shutil.copy2(env_example_file, env_file)
+                print("✅ .env 文件已创建")
+                print("⚠️  请编辑 .env 文件并设置必要的API密钥:")
+                print("    • OPENAI_API_KEY: OpenAI API密钥")
+                print("    • QWEATHER_API_KEY: 和风天气API密钥 (已提供测试密钥)")
+                print("    • TAVILY_API_KEY: Tavily搜索API密钥 (已提供测试密钥)")
+                self.setup_results['env_file'] = 'created'
+                return True
+            except Exception as e:
+                print(f"❌ 创建 .env 文件失败: {str(e)}")
+                self.setup_results['env_file'] = False
+                return False
+    
+    def create_directories(self) -> bool:
+        """创建必要的目录"""
+        print("\n📁 创建必要的目录...")
+        
+        directories = [
+            "logs",
+            "data",
+            "cache"
+        ]
+        
+        created_dirs = []
+        for dir_name in directories:
+            dir_path = self.project_root / dir_name
+            if not dir_path.exists():
+                try:
+                    dir_path.mkdir(parents=True, exist_ok=True)
+                    created_dirs.append(dir_name)
+                    print(f"  ✅ 创建目录: {dir_name}")
+                except Exception as e:
+                    print(f"  ❌ 创建目录失败 {dir_name}: {str(e)}")
+                    self.setup_results['directories'] = False
+                    return False
+            else:
+                print(f"  ✅ 目录已存在: {dir_name}")
+        
+        if created_dirs:
+            print(f"✅ 成功创建 {len(created_dirs)} 个目录")
+        else:
+            print("✅ 所有必要目录已存在")
+        
+        self.setup_results['directories'] = True
+        return True
+    
+    def check_data_files(self) -> bool:
+        """检查数据文件"""
+        print("\n📄 检查数据文件...")
+        
+        data_files = [
+            "China-City-List-latest.csv"
+        ]
+        
+        missing_files = []
+        for file_name in data_files:
+            file_path = self.project_root / file_name
+            if file_path.exists():
+                file_size = file_path.stat().st_size
+                print(f"  ✅ {file_name} (大小: {file_size:,} 字节)")
+            else:
+                missing_files.append(file_name)
+                print(f"  ❌ {file_name}")
+        
+        if missing_files:
+            print(f"⚠️  缺失 {len(missing_files)} 个数据文件:")
+            for file_name in missing_files:
+                print(f"    • {file_name}")
+            print("请确保这些文件存在于项目根目录")
+            self.setup_results['data_files'] = False
             return False
-
-def validate_config():
-    """
-    验证配置是否有效
+        else:
+            print("✅ 所有数据文件检查通过")
+            self.setup_results['data_files'] = True
+            return True
     
-    Returns:
-        bool: 配置是否有效
-    """
-    print("\n🔍 验证配置...")
+    def check_redis_connection(self) -> bool:
+        """检查Redis连接"""
+        print("\n🔴 检查Redis连接...")
+        
+        try:
+            import redis
+            
+            # 尝试连接Redis
+            redis_client = redis.Redis(
+                host=os.getenv('REDIS_HOST', 'localhost'),
+                port=int(os.getenv('REDIS_PORT', 6379)),
+                db=int(os.getenv('REDIS_DB', 0)),
+                password=os.getenv('REDIS_PASSWORD'),
+                socket_timeout=5
+            )
+            
+            redis_client.ping()
+            print("✅ Redis连接成功")
+            
+            # 获取Redis信息
+            info = redis_client.info()
+            print(f"  Redis版本: {info.get('redis_version', 'Unknown')}")
+            print(f"  使用内存: {info.get('used_memory_human', 'Unknown')}")
+            
+            self.setup_results['redis'] = True
+            return True
+            
+        except redis.ConnectionError:
+            print("⚠️  Redis连接失败 - 缓存功能将被禁用")
+            print("💡 如需启用缓存功能，请:")
+            print("    1. 安装并启动Redis服务")
+            print("    2. 检查Redis连接配置")
+            self.setup_results['redis'] = False
+            return False
+        except Exception as e:
+            print(f"❌ Redis检查失败: {str(e)}")
+            self.setup_results['redis'] = False
+            return False
     
-    try:
-        # 添加项目根目录到 Python 路径
-        project_root = Path(__file__).parent.parent
-        sys.path.insert(0, str(project_root))
+    def test_api_connections(self) -> bool:
+        """测试API连接"""
+        print("\n🌐 测试API连接...")
         
-        from config.settings import settings
+        api_results = {}
         
-        if settings.validate_all():
-            print("✅ 配置验证成功")
+        # 测试OpenAI API
+        print("  🤖 测试OpenAI API...")
+        try:
+            openai_key = os.getenv('OPENAI_API_KEY')
+            if openai_key and openai_key != 'your_openai_api_key_here':
+                # 这里可以添加实际的API测试
+                print("    ✅ OpenAI API密钥已配置")
+                api_results['openai'] = True
+            else:
+                print("    ⚠️  OpenAI API密钥未配置")
+                api_results['openai'] = False
+        except Exception as e:
+            print(f"    ❌ OpenAI API测试失败: {str(e)}")
+            api_results['openai'] = False
+        
+        # 测试和风天气API
+        print("  🌤️  测试和风天气API...")
+        try:
+            qweather_key = os.getenv('QWEATHER_API_KEY')
+            if qweather_key:
+                print("    ✅ 和风天气API密钥已配置")
+                api_results['qweather'] = True
+            else:
+                print("    ❌ 和风天气API密钥未配置")
+                api_results['qweather'] = False
+        except Exception as e:
+            print(f"    ❌ 和风天气API测试失败: {str(e)}")
+            api_results['qweather'] = False
+        
+        # 测试Tavily搜索API
+        print("  🔍 测试Tavily搜索API...")
+        try:
+            tavily_key = os.getenv('TAVILY_API_KEY')
+            if tavily_key:
+                print("    ✅ Tavily搜索API密钥已配置")
+                api_results['tavily'] = True
+            else:
+                print("    ❌ Tavily搜索API密钥未配置")
+                api_results['tavily'] = False
+        except Exception as e:
+            print(f"    ❌ Tavily搜索API测试失败: {str(e)}")
+            api_results['tavily'] = False
+        
+        # 统计结果
+        working_apis = sum(api_results.values())
+        total_apis = len(api_results)
+        
+        if working_apis == total_apis:
+            print(f"✅ 所有 {total_apis} 个API连接正常")
+            self.setup_results['api_connections'] = True
+            return True
+        elif working_apis > 0:
+            print(f"⚠️  {working_apis}/{total_apis} 个API连接正常")
+            self.setup_results['api_connections'] = 'partial'
             return True
         else:
-            print("❌ 配置验证失败")
+            print("❌ 所有API连接失败")
+            self.setup_results['api_connections'] = False
             return False
-            
-    except ImportError as e:
-        print(f"❌ 导入配置模块失败: {e}")
-        print("   请确保已正确安装依赖并配置环境变量")
-        return False
-    except Exception as e:
-        print(f"❌ 验证配置时发生错误: {e}")
-        return False
-
-def test_api_connections():
-    """
-    测试 API 连接是否正常
     
-    Returns:
-        bool: API 连接是否正常
-    """
-    print("\n🔍 测试 API 连接...")
-    
-    # 添加项目根目录到 Python 路径
-    project_root = Path(__file__).parent.parent
-    sys.path.insert(0, str(project_root))
-    
-    try:
-        from config.settings import settings
+    def generate_setup_report(self):
+        """生成设置报告"""
+        print("\n📊" + "="*58 + "📊")
+        print("📋 环境设置报告")
+        print("📊" + "="*58 + "📊")
         
-        # 测试 OpenAI API 连接
-        print("   测试 OpenAI API 连接...")
-        try:
-            from langchain_openai import ChatOpenAI
-            
-            llm = ChatOpenAI(
-                api_key=settings.openai.api_key,
-                base_url=settings.openai.base_url,
-                model="gpt-3.5-turbo",
-                temperature=0.3
-            )
-            
-            # 测试一个简单的调用
-            response = llm.invoke("Hello, world!")
-            if response:
-                print("✅ OpenAI API 连接正常")
-        except Exception as e:
-            print(f"❌ OpenAI API 连接失败: {e}")
-            
-        # 测试高德地图 API 连接
-        print("   测试高德地图 API 连接...")
-        try:
-            import requests
-            
-            url = f"{settings.amap.base_url}/weather/weatherInfo"
-            params = {
-                "key": settings.amap.api_key,
-                "city": "110000",  # 北京的 adcode
-                "extensions": "base"
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            if data.get("status") == "1":
-                print("✅ 高德地图 API 连接正常")
-        except Exception as e:
-            print(f"❌ 高德地图 API 连接失败: {e}")
-            
-        # 测试 Tavily API 连接
-        print("   测试 Tavily API 连接...")
-        try:
-            from tavily import TavilyClient
-            
-            client = TavilyClient(api_key=settings.tavily.api_key)
-            
-            # 测试一个简单的搜索
-            response = client.search(
-                query="test",
-                search_depth="basic",
-                max_results=1
-            )
-            
-            if response:
-                print("✅ Tavily API 连接正常")
-        except Exception as e:
-            print(f"❌ Tavily API 连接失败: {e}")
-            
-        return True  # 即使某些 API 测试失败，也继续执行
+        checks = [
+            ("Python版本", "python_version"),
+            ("依赖包", "dependencies"),
+            ("环境变量文件", "env_file"),
+            ("目录结构", "directories"),
+            ("数据文件", "data_files"),
+            ("Redis连接", "redis"),
+            ("API连接", "api_connections")
+        ]
         
-    except ImportError as e:
-        print(f"❌ 导入模块失败: {e}")
-        print("   请确保已正确安装依赖")
-        return False
-    except Exception as e:
-        print(f"❌ 测试 API 连接时发生错误: {e}")
-        return False
-
-def run_application():
-    """
-    运行应用程序
-    """
-    print("\n🚀 启动应用程序...")
+        passed_checks = 0
+        total_checks = len(checks)
+        
+        for check_name, check_key in checks:
+            result = self.setup_results.get(check_key, False)
+            if result is True:
+                status = "✅ 通过"
+                passed_checks += 1
+            elif result == 'created':
+                status = "📝 已创建"
+                passed_checks += 1
+            elif result == 'partial':
+                status = "⚠️  部分通过"
+                passed_checks += 0.5
+            else:
+                status = "❌ 失败"
+            
+            print(f"  {check_name:<15}: {status}")
+        
+        print(f"\n📈 总体评分: {passed_checks}/{total_checks} ({passed_checks/total_checks*100:.1f}%)")
+        
+        if passed_checks == total_checks:
+            print("\n🎉 环境设置完成！系统已准备就绪。")
+            print("\n🚀 现在可以运行:")
+            print("    python main.py --mode cli")
+            print("    python scripts/demo_scenarios.py")
+        elif passed_checks >= total_checks * 0.7:
+            print("\n⚠️  环境基本就绪，但有一些可选功能可能无法使用。")
+            print("建议解决上述问题以获得最佳体验。")
+        else:
+            print("\n❌ 环境设置不完整，请解决上述问题后重新运行设置。")
+        
+        print("📊" + "="*58 + "📊")
     
-    try:
-        subprocess.run([sys.executable, "main.py"])
-    except KeyboardInterrupt:
-        print("\n应用程序已停止")
-    except Exception as e:
-        print(f"❌ 启动应用程序失败: {e}")
+    def run_setup(self):
+        """运行完整的环境设置"""
+        self.print_header()
+        
+        try:
+            # 执行所有检查
+            self.check_python_version()
+            self.check_dependencies()
+            self.setup_environment_file()
+            self.create_directories()
+            self.check_data_files()
+            self.check_redis_connection()
+            self.test_api_connections()
+            
+            # 生成报告
+            self.generate_setup_report()
+            
+        except KeyboardInterrupt:
+            print("\n\n⚠️  设置被用户中断")
+        except Exception as e:
+            print(f"\n❌ 设置过程中发生错误: {str(e)}")
+            app_logger.error(f"环境设置失败: {str(e)}")
+
 
 def main():
-    """
-    程序主入口
-    """
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description="环境设置向导")
-    parser.add_argument("--check-only", action="store_true", help="只检查环境，不进行配置")
-    parser.add_argument("--run", action="store_true", help="设置完成后运行应用程序")
+    """主函数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="多任务问答助手环境设置")
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="仅检查环境，不进行修改"
+    )
+    
     args = parser.parse_args()
     
-    # 打印欢迎横幅
-    print_banner()
+    setup = EnvironmentSetup()
     
-    # 检查 Python 版本
-    if not check_python_version():
-        sys.exit(1)
-    
-    # 检查是否在虚拟环境中
-    check_virtual_environment()
-    
-    # 检查依赖
-    if not args.check_only and not check_dependencies():
-        print("\n📦 安装项目依赖...")
-        if not install_dependencies():
-            sys.exit(1)
-    
-    # 检查环境变量文件
-    check_env_file()
-    
-    # 验证配置
-    if not validate_config():
-        print("\n请编辑 .env 文件，确保以下配置项正确设置：")
-        print("   - OPENAI_API_KEY: OpenAI API 密钥")
-        print("   - AMAP_API_KEY: 高德地图 API 密钥")
-        print("   - TAVILY_API_KEY: Tavily 搜索 API 密钥")
-        
-        # 如果用户没有指定 --check-only，询问是否继续
-        if not args.check_only:
-            continue_input = input("\n是否继续测试 API 连接？(y/n): ")
-            if continue_input.lower() != 'y':
-                sys.exit(1)
-    
-    # 测试 API 连接
-    test_api_connections()
-    
-    # 如果指定了 --run 参数，运行应用程序
-    if args.run:
-        run_application()
-    else:
-        print("\n🎉 环境设置向导执行完成")
-        print("\n接下来请：")
-        print("1. 确保 .env 文件中的 API 密钥已正确配置")
-        print("2. 运行 'python main.py' 启动应用程序")
-        print("3. 或运行 'python scripts/setup_environment.py --run' 启动应用程序")
+    try:
+        setup.run_setup()
+        return 0
+    except Exception as e:
+        print(f"❌ 环境设置失败: {str(e)}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,201 +1,233 @@
-from typing import List, Dict, Optional
-from langchain.agents import create_openai_tools_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain.memory import ChatMessageHistory
+"""
+问答智能代理模块
+基于 LangChain 管道语法构建的简化问答助手
+使用 prompt | llm | output 模式
+"""
+
+import os
 import time
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+
+# 禁用 LangChain 追踪
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGCHAIN_TRACING"] = "false"
+
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.tools import tool
+import uuid
+import time
+from typing import Dict, Any, List
+
 from config.settings import settings
-from core.logger import logger
-from tools.amap_weather_tool import weather_query_tool
-from tools.tavily_search_tool import tavily_search_tool
+from core.logger import app_logger
+from tools.amap_weather_tool import AmapWeatherTool
+from tools.tavily_search_tool import TavilySearchTool
+from tools.tool_schemas import WeatherQuery, NewsSearch
 
 
 class QAAgent:
-    """
-    LangChain 多任务问答代理
+    """简化的问答代理，使用 LangChain 的 prompt | llm | output 语法"""
     
-    集成多种工具（天气查询、信息搜索等），实现智能对话和工具调用功能
-    """
-    
-    def __init__(self):
+    def __init__(self, session_id: str = None):
         """初始化问答代理"""
-        self.logger = logger.bind(module="qa_agent")
-        self.memory_store = {}
+        self.session_id = session_id or str(uuid.uuid4())
+        self.conversation_history = []
+        self.weather_tool = AmapWeatherTool()
+        self.search_tool = TavilySearchTool()
         
-        # 创建 OpenAI 语言模型
-        self.llm = ChatOpenAI(
-            api_key=settings.openai.api_key,
-            base_url=settings.openai.base_url,
-            model=settings.openai.model,
-            temperature=settings.openai.temperature
+        # 创建工具函数
+        self.tools = self._create_tools()
+        
+        # 初始化LLM并绑定工具
+        self.llm = self._initialize_llm()
+        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        
+        # 创建通用对话链
+        self.general_chain = self._create_general_chain()
+        
+        app_logger.info(f"QA代理初始化完成，会话ID: {self.session_id}")
+    
+    def _create_tools(self):
+        """创建工具函数列表"""
+        
+        @tool("weather_query", args_schema=WeatherQuery)
+        def weather_query(city_name: str) -> str:
+            """查询指定城市的天气信息"""
+            try:
+                result = self.weather_tool.get_weather(city_name)
+                if result.get("success"):
+                    return result.get("data", "获取天气信息失败")
+                else:
+                    return f"获取{city_name}天气信息失败: {result.get('error', '未知错误')}"
+            except Exception as e:
+                app_logger.error(f"天气查询工具调用失败: {str(e)}")
+                return f"天气查询失败: {str(e)}"
+        
+        @tool("news_search", args_schema=NewsSearch)
+        def news_search(query: str, max_results: int = 5) -> str:
+            """搜索新闻和信息"""
+            try:
+                result = self.search_tool.search_news(query, max_results)
+                if result.get("success"):
+                    return self.search_tool.format_search_results(result)
+                else:
+                    return f"搜索失败: {result.get('error', '未知错误')}"
+            except Exception as e:
+                app_logger.error(f"新闻搜索工具调用失败: {str(e)}")
+                return f"搜索失败: {str(e)}"
+        
+        return [weather_query, news_search]
+    
+    def _initialize_llm(self) -> ChatOpenAI:
+        """初始化语言模型"""
+        return ChatOpenAI(
+            model="gpt-4o",
+            api_key=settings.api.openai_api_key,
+            base_url=settings.api.openai_base_url,
+            temperature=0.3,
+            max_tokens=1000
         )
-        
-        # 注册所有工具
-        self.tools = [weather_query_tool, tavily_search_tool]
-        
-        # 创建代理
-        self.agent_executor = self._create_agent()
-        
-        self.logger.info("问答代理初始化完成")
     
-    def _create_agent(self) -> AgentExecutor:
-        """
-        创建 LangChain 代理执行器
+    def _create_general_chain(self):
+        """创建通用对话链: prompt | llm | output"""
+        prompt = ChatPromptTemplate.from_template("""
+        你是一个友好的助手。用户说: {query}
         
-        Returns:
-            配置好的代理执行器
-        """
-        # 定义系统提示词
-        system_prompt = ("你是一个多任务问答助手，你可以帮助用户完成以下任务：\n"
-                         "1. 查询天气信息 - 调用天气查询工具\n"
-                         "2. 搜索最新信息 - 调用搜索工具\n"
-                         "3. 日常对话交流\n"
-                         "\n"
-                         "请根据用户的问题，智能选择合适的工具来完成任务。\n"
-                         "如果无法确定使用哪个工具，请直接询问用户，不要猜测。\n"
-                         "请使用友好、自然的语言与用户交流。")
+        请简洁友好地回答用户的问题。如果用户询问天气，建议他们说"查询XX城市天气"。
+        如果用户想搜索信息，建议他们说"搜索XX"。
+        """)
         
-        # 创建提示词模板
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("user", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        # 创建工具代理
-        agent = create_openai_tools_agent(self.llm, self.tools, prompt)
-        
-        # 创建代理执行器
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=self.tools,
-            verbose=False,
-            handle_parsing_errors=True
-        )
-        
-        return agent_executor
-    
-    def _get_or_create_memory(self, session_id: str) -> ChatMessageHistory:
-        """
-        获取或创建会话记忆
-        
-        Args:
-            session_id: 会话 ID
-            
-        Returns:
-            会话的消息历史
-        """
-        if session_id not in self.memory_store:
-            self.memory_store[session_id] = ChatMessageHistory()
-        
-        # 限制会话历史长度
-        memory = self.memory_store[session_id]
-        if len(memory.messages) > settings.app.max_conversation_history * 2:  # 每条对话有用户和助手两条消息
-            memory.messages = memory.messages[-settings.app.max_conversation_history * 2:]
-        
-        return memory
-    
-    def chat(self, user_input: str, session_id: str = "default") -> Dict[str, any]:
-        """
-        处理用户的对话请求
-        
-        Args:
-            user_input: 用户输入
-            session_id: 会话 ID，用于区分不同用户的对话历史
-            
-        Returns:
-            包含回复内容、使用的工具和处理时间的字典
-        """
+        return prompt | self.llm | StrOutputParser()
+
+    def chat(self, user_input: str) -> Dict[str, Any]:
+        """处理用户输入，使用LLM工具调用机制"""
         start_time = time.time()
-        self.logger.info(f"处理用户查询: {user_input} (会话: {session_id})")
         
         try:
-            # 获取会话记忆
-            memory = self._get_or_create_memory(session_id)
+            # LLM处理用户输入并自动决定是否需要调用工具
+            response = self.llm_with_tools.invoke(user_input)
             
-            # 执行代理
-            response = self.agent_executor.invoke({
-                "input": user_input,
-                "chat_history": memory.messages
+            tools_used = []
+            final_response = ""
+            
+            # 检查是否有工具调用
+            if response.tool_calls:
+                print(f"🔧 检测到工具调用: {len(response.tool_calls)}个")
+                
+                # 执行工具调用
+                for tool_call in response.tool_calls:
+                    tool_name = tool_call['name']
+                    tool_args = tool_call['args']
+                    
+                    print(f"📞 调用工具: {tool_name}, 参数: {tool_args}")
+                    
+                    # 根据工具名称执行相应的工具
+                    if tool_name == "weather_query":
+                        city_name = tool_args.get('city_name', '')
+                        tool_result = self._execute_weather_tool(city_name)
+                        tools_used.append("amap_weather_tool")
+                    elif tool_name == "news_search":
+                        query = tool_args.get('query', '')
+                        max_results = tool_args.get('max_results', 5)
+                        tool_result = self._execute_search_tool(query, max_results)
+                        tools_used.append("tavily_search_tool")
+                    else:
+                        tool_result = f"未知工具: {tool_name}"
+                    
+                    # 使用LLM格式化工具结果
+                    format_prompt = ChatPromptTemplate.from_template("""
+                    用户问题: {user_input}
+                    工具结果: {tool_result}
+                    
+                    请根据工具结果，用自然、友好的语言回答用户的问题。
+                    """)
+                    
+                    format_chain = format_prompt | self.llm | StrOutputParser()
+                    final_response = format_chain.invoke({
+                        "user_input": user_input,
+                        "tool_result": tool_result
+                    })
+            else:
+                # 没有工具调用，使用通用对话链
+                final_response = self.general_chain.invoke({"query": user_input})
+            
+            # 记录对话历史
+            self.conversation_history.append({
+                "user": user_input,
+                "assistant": final_response,
+                "timestamp": datetime.now().isoformat(),
+                "tools_used": tools_used
             })
             
-            # 获取回复内容
-            reply = response.get("output", "抱歉，我无法回答这个问题")
+            # 限制历史长度
+            if len(self.conversation_history) > 10:
+                self.conversation_history = self.conversation_history[-10:]
             
-            # 添加到会话历史
-            memory.add_user_message(user_input)
-            memory.add_ai_message(reply)
+            processing_time = (time.time() - start_time) * 1000
             
-            # 计算处理时间
-            processing_time = round((time.time() - start_time) * 1000, 1)
-            
-            # 记录使用的工具（如果有）
-            used_tools = []
-            if "tool_calls" in response:
-                for tool_call in response["tool_calls"]:
-                    used_tools.append(tool_call["name"])
-            
-            result = {
-                "reply": reply,
-                "used_tools": used_tools,
-                "processing_time": processing_time,
-                "session_id": session_id
+            return {
+                "response": final_response,
+                "session_id": self.session_id,
+                "processing_time_ms": processing_time,
+                "tools_used": tools_used,
+                "timestamp": datetime.now().isoformat()
             }
-            
-            self.logger.info(f"用户查询处理完成，耗时 {processing_time}ms，使用工具: {used_tools}")
-            return result
             
         except Exception as e:
-            self.logger.error(f"处理用户查询失败: {e}")
+            app_logger.error(f"对话处理失败: {e}")
+            processing_time = (time.time() - start_time) * 1000
+            
             return {
-                "reply": "抱歉，我暂时无法处理您的请求，请稍后重试",
-                "used_tools": [],
-                "processing_time": round((time.time() - start_time) * 1000, 1),
-                "session_id": session_id
+                "response": f"抱歉，处理您的请求时出现了错误: {str(e)}",
+                "session_id": self.session_id,
+                "processing_time_ms": processing_time,
+                "tools_used": [],
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e)
             }
     
-    def get_conversation_history(self, session_id: str = "default") -> List[Dict[str, str]]:
-        """
-        获取会话历史记录
-        
-        Args:
-            session_id: 会话 ID
-            
-        Returns:
-            会话历史记录列表
-        """
-        memory = self._get_or_create_memory(session_id)
-        history = []
-        
-        for message in memory.messages:
-            if isinstance(message, HumanMessage):
-                history.append({"role": "user", "content": message.content})
-            elif isinstance(message, AIMessage):
-                history.append({"role": "assistant", "content": message.content})
-        
-        return history
+    def _execute_weather_tool(self, city_name: str) -> str:
+        """执行天气查询工具"""
+        try:
+            result = self.weather_tool.get_weather(city_name)
+            if result.get("success"):
+                return result.get("data", "获取天气信息失败")
+            else:
+                return f"获取{city_name}天气信息失败: {result.get('error', '未知错误')}"
+        except Exception as e:
+            app_logger.error(f"天气查询工具调用失败: {str(e)}")
+            return f"天气查询失败: {str(e)}"
     
-    def clear_conversation_history(self, session_id: str = "default") -> bool:
-        """
-        清除会话历史记录
-        
-        Args:
-            session_id: 会话 ID
-            
-        Returns:
-            是否清除成功
-        """
-        if session_id in self.memory_store:
-            del self.memory_store[session_id]
-            self.logger.info(f"清除会话历史: {session_id}")
-            return True
-        return False
+    def _execute_search_tool(self, query: str, max_results: int = 5) -> str:
+        """执行新闻搜索工具"""
+        try:
+            result = self.search_tool.search_news(query, max_results)
+            if result.get("success"):
+                return self.search_tool.format_search_results(result['data'])
+            else:
+                return f"搜索失败: {result.get('error', '未知错误')}"
+        except Exception as e:
+            app_logger.error(f"新闻搜索工具调用失败: {str(e)}")
+            return f"搜索失败: {str(e)}"
+    
+    def get_conversation_history(self) -> List[Dict[str, Any]]:
+        """获取对话历史"""
+        return self.conversation_history.copy()
+    
+    def clear_conversation(self) -> None:
+        """清空对话历史"""
+        self.conversation_history = []
+        app_logger.info(f"对话历史已清空: {self.session_id}")
+    
+    def end_session(self) -> None:
+        """结束会话"""
+        app_logger.info(f"会话已结束: {self.session_id}")
 
 
-# 创建全局代理实例
-qa_agent = QAAgent()
-
-
+def create_qa_agent(session_id: Optional[str] = None) -> QAAgent:
+    """创建QA代理实例"""
+    return QAAgent(session_id=session_id)

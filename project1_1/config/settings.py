@@ -1,116 +1,142 @@
-from typing import Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator, ValidationError
+"""
+配置管理模块
+使用Pydantic进行配置验证和类型检查，符合企业级开发规范
+"""
+
 import os
+from typing import Optional
+from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator, validator
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 
-class OpenAIConfig(BaseSettings):
-    """OpenAI 配置"""
-    api_key: str = Field(..., env="OPENAI_API_KEY", description="OpenAI API 密钥")
-    base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL", description="OpenAI API 基础 URL")
-    model: str = Field("gpt-3.5-turbo", env="OPENAI_MODEL", description="OpenAI 模型")
-    temperature: float = Field(0.3, env="OPENAI_TEMPERATURE", description="生成文本的随机性")
-    max_tokens: int = Field(2048, env="OPENAI_MAX_TOKENS", description="最大生成令牌数")
+class APISettings(BaseSettings):
+    """API相关配置"""
     
-    @field_validator('api_key')
-    def validate_api_key(cls, v):
-        if not v or not v.strip():
-            raise ValueError("OpenAI API 密钥不能为空")
-        if not v.startswith("sk-"):
-            raise ValueError("OpenAI API 密钥格式不正确，应以 'sk-' 开头")
-        return v
-
-
-class AMapConfig(BaseSettings):
-    """高德地图配置"""
-    api_key: str = Field(..., env="AMAP_API_KEY", description="高德地图 API 密钥")
-    base_url: str = Field("https://restapi.amap.com/v3", env="AMAP_BASE_URL", description="高德地图 API 基础 URL")
+    # OpenAI配置
+    openai_api_key: str = Field(..., description="OpenAI API密钥")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI API基础URL")
     
-    @field_validator('api_key')
-    def validate_api_key(cls, v):
-        if not v or not v.strip():
-            raise ValueError("高德地图 API 密钥不能为空")
-        # 高德地图API密钥通常是32位字符串
-        if len(v.strip()) != 32:
-            raise ValueError("高德地图 API 密钥格式不正确，应为32位字符串")
-        return v
-
-
-class TavilyConfig(BaseSettings):
-    """Tavily 搜索配置"""
-    api_key: str = Field(..., env="TAVILY_API_KEY", description="Tavily 搜索 API 密钥")
-    base_url: str = Field("https://api.tavily.com", env="TAVILY_BASE_URL", description="Tavily API 基础 URL")
+    # 高德地图API配置
+    amap_api_key: str = Field(..., description="高德地图API密钥")
+    amap_base_url: str = Field(default="https://restapi.amap.com/v3", description="高德地图API基础URL")
     
-    @field_validator('api_key')
-    def validate_api_key(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Tavily 搜索 API 密钥不能为空")
-        if not v.startswith("tvly-"):
-            raise ValueError("Tavily 搜索 API 密钥格式不正确，应以 'tvly-' 开头")
-        return v
-
-
-class RedisConfig(BaseSettings):
-    """Redis 配置"""
-    host: Optional[str] = Field("localhost", env="REDIS_HOST", description="Redis 主机地址")
-    port: Optional[int] = Field(6379, env="REDIS_PORT", description="Redis 端口")
-    db: Optional[int] = Field(0, env="REDIS_DB", description="Redis 数据库编号")
-    password: Optional[str] = Field(None, env="REDIS_PASSWORD", description="Redis 密码")
+    # Tavily搜索API配置
+    tavily_api_key: str = Field(..., description="Tavily搜索API密钥")
     
-    @field_validator('port')
+    @validator('openai_api_key', 'amap_api_key', 'tavily_api_key')
+    def validate_api_keys(cls, v):
+        """验证API密钥不能为空"""
+        if not v or v.strip() == "":
+            raise ValueError("API密钥不能为空")
+        return v.strip()
+    
+    class Config:
+        env_prefix = ""
+        case_sensitive = False
+
+
+class RedisSettings(BaseSettings):
+    """Redis缓存配置"""
+    
+    redis_host: str = Field(default="localhost", description="Redis主机地址")
+    redis_port: int = Field(default=6379, description="Redis端口")
+    redis_db: int = Field(default=0, description="Redis数据库编号")
+    redis_password: Optional[str] = Field(default=None, description="Redis密码")
+    
+    @field_validator('redis_port')
     def validate_port(cls, v):
-        if v is not None:
-            if not (1 <= v <= 65535):
-                raise ValueError("Redis 端口号必须在 1-65535 之间")
+        """验证端口范围"""
+        if not 1 <= v <= 65535:
+            raise ValueError("端口号必须在1-65535范围内")
         return v
+    
+    class Config:
+        env_prefix = ""
+        case_sensitive = False
 
 
-class AppConfig(BaseSettings):
-    """应用配置"""
-    name: str = Field("MultiTaskQAAssistant", env="APP_NAME", description="应用名称")
-    version: str = Field("1.0.0", env="APP_VERSION", description="应用版本")
-    log_level: str = Field("INFO", env="LOG_LEVEL", description="日志级别")
-    max_conversation_history: int = Field(50, env="MAX_CONVERSATION_HISTORY", description="最大对话历史记录数")
-    cache_ttl: int = Field(3600, env="CACHE_TTL", description="缓存过期时间（秒）")
-    max_history_length: int = Field(10, env="MAX_HISTORY_LENGTH", description="最大历史长度")
-    retry_max: int = Field(3, env="RETRY_MAX", description="最大重试次数")
-    retry_delay: int = Field(2, env="RETRY_DELAY", description="重试延迟（秒）")
+class AppSettings(BaseSettings):
+    """应用程序配置"""
+    
+    app_name: str = Field(default="MultiTaskQAAssistant", description="应用名称")
+    app_version: str = Field(default="1.0.0", description="应用版本")
+    log_level: str = Field(default="INFO", description="日志级别")
+    max_conversation_history: int = Field(default=50, description="最大对话历史记录数")
+    cache_ttl: int = Field(default=3600, description="缓存过期时间(秒)")
     
     @field_validator('log_level')
     def validate_log_level(cls, v):
-        valid_log_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_log_levels:
-            raise ValueError(f"无效的日志级别: {v}，有效级别为: {', '.join(valid_log_levels)}")
+        """验证日志级别"""
+        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        if v.upper() not in valid_levels:
+            raise ValueError(f"日志级别必须是以下之一: {valid_levels}")
         return v.upper()
-
-
-class Settings(BaseSettings):
-    """项目配置管理"""
-    openai: OpenAIConfig = OpenAIConfig()
-    amap: AMapConfig = AMapConfig()
-    tavily: TavilyConfig = TavilyConfig()
-    redis: RedisConfig = RedisConfig()
-    app: AppConfig = AppConfig()
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        validate_assignment=True,
-    )
+    @field_validator('max_conversation_history', 'cache_ttl')
+    def validate_positive_int(cls, v):
+        """验证正整数"""
+        if v <= 0:
+            raise ValueError("值必须大于0")
+        return v
+    
+    class Config:
+        env_prefix = ""
+        case_sensitive = False
+
+
+class Settings:
+    """
+    全局配置管理器
+    
+    采用单例模式，确保配置的一致性和性能
+    提供统一的配置访问接口
+    """
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not self._initialized:
+            try:
+                self.api = APISettings()
+                self.redis = RedisSettings()
+                self.app = AppSettings()
+                self._initialized = True
+            except Exception as e:
+                raise RuntimeError(f"配置初始化失败: {str(e)}")
+    
+    def get_city_data_path(self) -> str:
+        """获取城市数据文件路径"""
+        return os.path.join(os.path.dirname(os.path.dirname(__file__)), "China-City-List-latest.csv")
     
     def validate_all(self) -> bool:
-        """验证所有配置项是否有效"""
+        """验证所有配置"""
         try:
-            # 验证所有子配置
-            # Pydantic 会自动验证子模型，所以这里只需要检查是否成功初始化
-            print("所有配置验证通过")
+            # 检查必需的API密钥
+            if not self.api.openai_api_key:
+                print("❌ OpenAI API密钥未配置")
+                return False
+            
+            if not self.api.amap_api_key:
+                print("❌ 高德地图API密钥未配置")
+                return False
+            
+            print("✅ 配置验证通过")
             return True
+            
         except Exception as e:
-            print(f"配置验证失败: {e}")
+            print(f"❌ 配置验证失败: {str(e)}")
             return False
 
 
-# 创建全局配置实例
+# 全局配置实例
 settings = Settings()
-
