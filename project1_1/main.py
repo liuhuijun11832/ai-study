@@ -35,42 +35,42 @@ def main():
     if not settings.validate_all():
         print("❌ 配置验证失败，请检查环境变量配置")
         return 1
-    
+
     print_welcome()
-    
+
     # 创建问答代理
     try:
         agent = create_qa_agent()
         print(f" 问答助手已启动 (会话ID: {agent.session_id})")
         print()
-        
+
         while True:
             try:
                 # 获取用户输入
                 user_input = input(" 您: ").strip()
-                
+
                 # 检查退出命令
                 if user_input.lower() in ['quit', 'exit', '退出', 'q']:
                     print("👋 再见！")
                     break
-                
+
                 if not user_input:
                     continue
-                
+
                 # 处理用户输入
                 print(" 正在思考...")
                 result = agent.chat(user_input)
-                
+
                 # 显示响应
                 print(f" 助手: {result['response']}")
-                
+
                 # 显示使用的工具
                 if result.get('tools_used'):
                     print(f"🔧 使用工具: {', '.join(result['tools_used'])}")
-                
+
                 print(f"⏱️  处理时间: {result['processing_time_ms']:.1f}ms")
                 print()
-                
+
             except KeyboardInterrupt:
                 print("\n 再见！")
                 break
@@ -78,11 +78,11 @@ def main():
                 print(f"❌ 处理错误: {str(e)}")
                 app_logger.error(f"处理用户输入时出错: {e}")
                 continue
-        
+
         # 结束会话
         agent.end_session()
         return 0
-        
+
     except Exception as e:
         print(f"❌ 启动失败: {str(e)}")
         app_logger.error(f"程序启动失败: {e}")

@@ -1,156 +1,163 @@
 """
-Tavily搜索工具模块
-用于获取最新新闻和信息搜索
+高德地图天气查询工具
+提供基于高德地图API的天气信息查询功能
 """
 
-import os
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+import requests
+import json
+from typing import Dict, Any, Optional
 
-from tavily import TavilyClient
+from config.settings import settings
 from core.logger import app_logger
 
 
-class TavilySearchTool:
-    """Tavily搜索工具类"""
-    
-    def __init__(self, api_key: str = "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"):
+class AmapWeatherTool:
+    """简化的高德地图天气查询工具"""
+
+    def __init__(self):
+        """初始化天气工具"""
+        self.api_key = settings.api.amap_api_key
+        self.base_url = "https://restapi.amap.com/v3/weather/weatherInfo"
+
+        # 常见城市的adcode映射
+        self.city_adcodes = {
+            "北京": "110000",
+            "上海": "310000",
+            "广州": "440100",
+            "深圳": "440300",
+            "杭州": "330100",
+            "南京": "320100",
+            "武汉": "420100",
+            "成都": "510100",
+            "西安": "610100",
+            "重庆": "500000",
+            "天津": "120000",
+            "苏州": "320500",
+            "郑州": "410100",
+            "长沙": "430100",
+            "东莞": "441900",
+            "青岛": "370200",
+            "沈阳": "210100",
+            "宁波": "330200",
+            "昆明": "530100",
+            "佛山": "440600"
+        }
+
+        app_logger.info("高德天气工具初始化完成")
+
+    def get_weather(self, city_name: str) -> Dict[str, Any]:
         """
-        初始化Tavily搜索工具
-        
+        获取指定城市的天气信息
+
         Args:
-            api_key: Tavily API密钥
-        """
-        self.api_key = api_key
-        self.client = TavilyClient(api_key)
-        app_logger.info("Tavily搜索工具初始化完成")
-    
-    def search_news(self, query: str, max_results: int = 5) -> Dict[str, Any]:
-        """
-        搜索新闻信息
-        
-        Args:
-            query: 搜索查询
-            max_results: 最大结果数量
-            
+            city_name: 城市名称
+
         Returns:
-            包含搜索结果的字典
+            Dict[str, Any]: 天气信息结果
         """
         try:
-            app_logger.info(f"开始搜索新闻: {query}")
-            
-            # 调用Tavily搜索API
-            response = self.client.search(
-                query=query,
-                search_depth="basic",
-                max_results=max_results,
-                include_answer=True,
-                include_raw_content=False
-            )
-            
-            if not response or 'results' not in response:
+            # 获取城市adcode
+            adcode = self._get_city_adcode(city_name)
+            if not adcode:
                 return {
-                    'success': False,
-                    'error': '搜索结果为空',
-                    'data': None
+                    "success": False,
+                    "error": f"未找到城市 '{city_name}' 的信息"
                 }
-            
-            # 格式化搜索结果
-            formatted_results = []
-            for result in response.get('results', []):
-                formatted_result = {
-                    'title': result.get('title', ''),
-                    'url': result.get('url', ''),
-                    'content': result.get('content', ''),
-                    'published_date': result.get('published_date', ''),
-                    'score': result.get('score', 0)
-                }
-                formatted_results.append(formatted_result)
-            
-            # 构建返回数据
-            search_data = {
-                'query': query,
-                'answer': response.get('answer', ''),
-                'results': formatted_results,
-                'search_time': datetime.now().isoformat(),
-                'total_results': len(formatted_results)
+
+            # 调用天气API
+            params = {
+                "key": self.api_key,
+                "city": adcode,
+                "extensions": "base"  # 获取实况天气
             }
-            
-            app_logger.info(f"成功获取 {len(formatted_results)} 条搜索结果")
-            
+
+            response = requests.get(self.base_url, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if data.get("status") == "1" and data.get("lives"):
+                weather_info = data["lives"][0]
+                formatted_data = self._format_weather_info(weather_info, city_name)
+
+                app_logger.info(f"成功获取 {city_name} 的天气信息")
+                return {
+                    "success": True,
+                    "data": formatted_data
+                }
+            else:
+                error_msg = data.get("info", "未知错误")
+                app_logger.error(f"天气API返回错误: {error_msg}")
+                return {
+                    "success": False,
+                    "error": f"获取天气信息失败: {error_msg}"
+                }
+
+        except requests.exceptions.Timeout:
+            app_logger.error(f"获取 {city_name} 天气信息超时")
             return {
-                'success': True,
-                'data': search_data,
-                'error': None
+                "success": False,
+                "error": "请求超时，请稍后重试"
             }
-            
+        except requests.exceptions.RequestException as e:
+            app_logger.error(f"天气API请求失败: {str(e)}")
+            return {
+                "success": False,
+                "error": f"网络请求失败: {str(e)}"
+            }
         except Exception as e:
-            error_msg = f"搜索失败: {str(e)}"
-            app_logger.error(error_msg)
+            app_logger.error(f"获取天气信息时出现未知错误: {str(e)}")
             return {
-                'success': False,
-                'error': error_msg,
-                'data': None
+                "success": False,
+                "error": f"获取天气信息失败: {str(e)}"
             }
-    
-    def format_search_results(self, search_data: Dict[str, Any]) -> str:
-        """
-        格式化搜索结果为可读文本
-        
-        Args:
-            search_data: 搜索数据
-            
-        Returns:
-            格式化后的文本
-        """
-        if not search_data or not search_data.get('results'):
-            return "未找到相关搜索结果"
-        
-        formatted_text = f"🔍 搜索查询: {search_data.get('query', '')}\n\n"
-        
-        # 添加AI总结（如果有）
-        if search_data.get('answer'):
-            formatted_text += f"📝 AI总结:\n{search_data['answer']}\n\n"
-        
-        # 添加搜索结果
-        formatted_text += "📰 相关新闻:\n"
-        for i, result in enumerate(search_data['results'][:5], 1):
-            title = result.get('title', '无标题')
-            content = result.get('content', '')
-            url = result.get('url', '')
-            
-            # 截取内容前150个字符
-            if len(content) > 150:
-                content = content[:150] + "..."
-            
-            formatted_text += f"\n{i}. {title}\n"
-            formatted_text += f"   {content}\n"
-            if url:
-                formatted_text += f"   🔗 {url}\n"
-        
-        formatted_text += f"\n⏰ 搜索时间: {search_data.get('search_time', '')}"
-        formatted_text += f"\n📊 共找到 {search_data.get('total_results', 0)} 条结果"
-        
-        return formatted_text
-    
-    def search_and_format(self, query: str, max_results: int = 5) -> str:
-        """
-        搜索并格式化结果的便捷方法
-        
-        Args:
-            query: 搜索查询
-            max_results: 最大结果数量
-            
-        Returns:
-            格式化后的搜索结果文本
-        """
-        search_result = self.search_news(query, max_results)
-        
-        if not search_result['success']:
-            return f"搜索失败: {search_result.get('error', '未知错误')}"
-        
-        return self.format_search_results(search_result['data'])
+
+    def _get_city_adcode(self, city_name: str) -> Optional[str]:
+        """获取城市的adcode"""
+        city_name = city_name.strip()
+
+        # 直接匹配
+        if city_name in self.city_adcodes:
+            return self.city_adcodes[city_name]
+
+        # 去掉"市"后缀再匹配
+        if city_name.endswith("市"):
+            city_name_without_suffix = city_name[:-1]
+            if city_name_without_suffix in self.city_adcodes:
+                return self.city_adcodes[city_name_without_suffix]
+
+        # 模糊匹配
+        for city, adcode in self.city_adcodes.items():
+            if city_name in city or city in city_name:
+                return adcode
+
+        return None
+
+    def _format_weather_info(self, weather_info: Dict[str, Any], city_name: str) -> str:
+        """格式化天气信息"""
+        try:
+            temperature = weather_info.get("temperature", "未知")
+            weather = weather_info.get("weather", "未知")
+            wind_direction = weather_info.get("winddirection", "未知")
+            wind_power = weather_info.get("windpower", "未知")
+            humidity = weather_info.get("humidity", "未知")
+            report_time = weather_info.get("reporttime", "未知")
+
+            formatted_info = f"""
+            🌡️ 温度: {temperature}°C
+            🌤️ 天气: {weather}
+            💨 风向: {wind_direction}风
+            🌪️ 风力: {wind_power}级
+            💧 湿度: {humidity}%
+            🕐 更新时间: {report_time}
+                        """.strip()
+
+            return formatted_info
+
+        except Exception as e:
+            app_logger.error(f"格式化天气信息失败: {str(e)}")
+            return f"天气信息格式化失败: {str(e)}"
 
 
 # 创建全局实例
-tavily_search_tool = TavilySearchTool()
+amap_weather_tool = AmapWeatherTool()

@@ -1,127 +1,156 @@
-import time
-from typing import Optional
-from langchain.tools import tool
+"""
+Tavily搜索工具模块
+用于获取最新新闻和信息搜索
+"""
+
+import os
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+
 from tavily import TavilyClient
-from config.settings import settings
-from core.logger import logger
-from tools.tool_schemas import SearchQuery
+from core.logger import app_logger
 
 
 class TavilySearchTool:
-    """
-    Tavily 搜索工具
-    
-    集成 Tavily 搜索 API，提供新闻和信息搜索功能
-    """
-    
-    def __init__(self):
-        """初始化 Tavily 搜索工具"""
-        self.api_key = settings.tavily.api_key
-        self.client = TavilyClient(api_key=self.api_key)
-        self.logger = logger.bind(module="tavily_search_tool")
-    
-    def search(self, query: str, max_results: int = 5, search_depth: str = "basic") -> str:
+    """Tavily搜索工具类"""
+
+    def __init__(self, api_key: str = "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"):
         """
-        执行搜索并返回格式化结果
-        
+        初始化Tavily搜索工具
+
         Args:
-            query: 搜索关键词或问题
-            max_results: 要返回的最大搜索结果数量
-            search_depth: 搜索深度 (basic 或 advanced)
-            
-        Returns:
-            格式化的搜索结果
+            api_key: Tavily API密钥
         """
-        # 检查搜索关键词是否为空
-        if not query:
-            return "请提供有效的搜索关键词"
-        
-        # 限制结果数量范围
-        max_results = max(1, min(max_results, 10))
-        
+        self.api_key = api_key
+        self.client = TavilyClient(api_key)
+        app_logger.info("Tavily搜索工具初始化完成")
+
+    def search_news(self, query: str, max_results: int = 5) -> Dict[str, Any]:
+        """
+        搜索新闻信息
+
+        Args:
+            query: 搜索查询
+            max_results: 最大结果数量
+
+        Returns:
+            包含搜索结果的字典
+        """
         try:
-            self.logger.info(f"执行 Tavily 搜索: {query}")
-            
-            # 调用 Tavily 搜索 API
+            app_logger.info(f"开始搜索新闻: {query}")
+
+            # 调用Tavily搜索API
             response = self.client.search(
                 query=query,
-                search_depth=search_depth,
+                search_depth="basic",
                 max_results=max_results,
                 include_answer=True,
                 include_raw_content=False
             )
-            
+
+            if not response or 'results' not in response:
+                return {
+                    'success': False,
+                    'error': '搜索结果为空',
+                    'data': None
+                }
+
             # 格式化搜索结果
-            return self._format_search_result(response, query)
-            
+            formatted_results = []
+            for result in response.get('results', []):
+                formatted_result = {
+                    'title': result.get('title', ''),
+                    'url': result.get('url', ''),
+                    'content': result.get('content', ''),
+                    'published_date': result.get('published_date', ''),
+                    'score': result.get('score', 0)
+                }
+                formatted_results.append(formatted_result)
+
+            # 构建返回数据
+            search_data = {
+                'query': query,
+                'answer': response.get('answer', ''),
+                'results': formatted_results,
+                'search_time': datetime.now().isoformat(),
+                'total_results': len(formatted_results)
+            }
+
+            app_logger.info(f"成功获取 {len(formatted_results)} 条搜索结果")
+
+            return {
+                'success': True,
+                'data': search_data,
+                'error': None
+            }
+
         except Exception as e:
-            self.logger.error(f"Tavily 搜索失败: {e}")
-            return "搜索服务暂时不可用，请稍后重试"
-    
-    def _format_search_result(self, response: dict, original_query: str) -> str:
+            error_msg = f"搜索失败: {str(e)}"
+            app_logger.error(error_msg)
+            return {
+                'success': False,
+                'error': error_msg,
+                'data': None
+            }
+
+    def format_search_results(self, search_data: Dict[str, Any]) -> str:
         """
-        格式化搜索结果
-        
+        格式化搜索结果为可读文本
+
         Args:
-            response: Tavily API 返回的响应数据
-            original_query: 原始搜索查询
-            
+            search_data: 搜索数据
+
         Returns:
-            格式化的搜索结果字符串
+            格式化后的文本
         """
-        result = []
-        
-        # 添加 AI 生成的答案摘要（如果有）
-        if response.get("answer"):
-            result.append(f"## 关于 '{original_query}' 的搜索摘要")
-            result.append(response["answer"])
-            result.append("")
-        
-        # 添加搜索结果列表
-        if response.get("results"):
-            result.append(f"## 相关搜索结果 ({len(response['results'])} 条)")
-            
-            for i, item in enumerate(response["results"], 1):
-                title = item.get("title", "无标题")
-                url = item.get("url", "")
-                content = item.get("content", "")
-                
-                # 截断过长的内容
-                if len(content) > 200:
-                    content = content[:200] + "..."
-                
-                # 格式化单个结果
-                result.append(f"{i}. **{title}**")
-                if url:
-                    result.append(f"   来源: {url}")
-                if content:
-                    result.append(f"   摘要: {content}")
-                result.append("")
-        
-        # 如果没有结果
-        if not result:
-            return f"未找到与 '{original_query}' 相关的信息"
-        
-        # 组合所有结果
-        return "\n".join(result)
+        if not search_data or not search_data.get('results'):
+            return "未找到相关搜索结果"
+
+        formatted_text = f"🔍 搜索查询: {search_data.get('query', '')}\n\n"
+
+        # 添加AI总结（如果有）
+        if search_data.get('answer'):
+            formatted_text += f"📝 AI总结:\n{search_data['answer']}\n\n"
+
+        # 添加搜索结果
+        formatted_text += "📰 相关新闻:\n"
+        for i, result in enumerate(search_data['results'][:5], 1):
+            title = result.get('title', '无标题')
+            content = result.get('content', '')
+            url = result.get('url', '')
+
+            # 截取内容前150个字符
+            if len(content) > 150:
+                content = content[:150] + "..."
+
+            formatted_text += f"\n{i}. {title}\n"
+            formatted_text += f"   {content}\n"
+            if url:
+                formatted_text += f"   🔗 {url}\n"
+
+        formatted_text += f"\n⏰ 搜索时间: {search_data.get('search_time', '')}"
+        formatted_text += f"\n📊 共找到 {search_data.get('total_results', 0)} 条结果"
+
+        return formatted_text
+
+    def search_and_format(self, query: str, max_results: int = 5) -> str:
+        """
+        搜索并格式化结果的便捷方法
+
+        Args:
+            query: 搜索查询
+            max_results: 最大结果数量
+
+        Returns:
+            格式化后的搜索结果文本
+        """
+        search_result = self.search_news(query, max_results)
+
+        if not search_result['success']:
+            return f"搜索失败: {search_result.get('error', '未知错误')}"
+
+        return self.format_search_results(search_result['data'])
 
 
-# 创建 LangChain 工具实例
-@tool("tavily_search", args_schema=SearchQuery, return_direct=True)
-def tavily_search_tool(query: str, max_results: int = 5, search_depth: str = "basic") -> str:
-    """
-    使用 Tavily 搜索工具搜索最新信息
-    
-    可以用于搜索新闻、科技动态、百科知识等各类信息
-    
-    Args:
-        query: 搜索关键词或问题，例如：最新人工智能发展、Python 教程
-        max_results: 要返回的最大搜索结果数量，默认值为 5
-        search_depth: 搜索深度，可选值：basic（基础搜索）、advanced（高级搜索）
-        
-    Returns:
-        格式化的搜索结果
-    """
-    search_tool = TavilySearchTool()
-    return search_tool.search(query, max_results, search_depth)
-
+# 创建全局实例
+tavily_search_tool = TavilySearchTool()

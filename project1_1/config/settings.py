@@ -27,7 +27,7 @@ class APISettings(BaseSettings):
     # Tavily搜索API配置
     tavily_api_key: str = Field(..., description="Tavily搜索API密钥")
     
-    @validator('openai_api_key', 'amap_api_key', 'tavily_api_key')
+    @field_validator('openai_api_key', 'amap_api_key', 'tavily_api_key')
     def validate_api_keys(cls, v):
         """验证API密钥不能为空"""
         if not v or v.strip() == "":
@@ -113,11 +113,11 @@ class Settings:
                 self._initialized = True
             except Exception as e:
                 raise RuntimeError(f"配置初始化失败: {str(e)}")
-    
+
     def get_city_data_path(self) -> str:
         """获取城市数据文件路径"""
         return os.path.join(os.path.dirname(os.path.dirname(__file__)), "China-City-List-latest.csv")
-    
+
     def validate_all(self) -> bool:
         """验证所有配置"""
         try:
