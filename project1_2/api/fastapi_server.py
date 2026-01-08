@@ -178,7 +178,8 @@ def start_server(host: str = "127.0.0.1", port: int = 8000):
     print(f"🚀 启动FastAPI模拟服务器...")
     print(f"📍 服务地址: http://{host}:{port}")
     print(f"📖 API文档: http://{host}:{port}/docs")
-    uvicorn.run("api.fastapi_server:app", host=host, port=port, reload=False, log_level="info")
+    # uvicorn.run("fastapi_server:app", host=host, port=port, reload=False, log_level="info")
+    uvicorn.run(app, host=host, port=port, reload=False, log_level="info")
 
 
 if __name__ == "__main__":
