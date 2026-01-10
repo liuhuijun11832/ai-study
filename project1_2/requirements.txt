@@ -2,6 +2,7 @@
 
 # AutoGen框架 - 核心智能体框架
 pyautogen>=0.2.0
+autogen>=0.10.0
 
 # FastAPI - Web API框架
 fastapi>=0.104.0
