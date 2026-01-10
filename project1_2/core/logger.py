@@ -17,7 +17,7 @@ class UTF8FileHandler(RotatingFileHandler):
         kwargs['encoding'] = 'utf-8'
         super().__init__(*args, **kwargs)
 
-def setup_logging(name: str = __name__) -> logging.Logger:
+def setup_logger(name: str = __name__) -> logging.Logger:
     """
         设置日志记录器
 
@@ -66,6 +66,6 @@ def setup_logging(name: str = __name__) -> logging.Logger:
     logger.addHandler(console_handler)
     return logger
 
-default_logger = setup_logging("multi_agent_system")
+default_logger = setup_logger("multi_agent_system")
 
 

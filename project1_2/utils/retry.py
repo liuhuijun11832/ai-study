@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 import httpx
-from requests import RequestException
+from requests.exceptions import RequestException
 from tenacity import stop_after_attempt, wait_exponential, before_sleep_log, retry, after_log
 
 logger = logging.getLogger(__name__)

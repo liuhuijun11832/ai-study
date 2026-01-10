@@ -31,7 +31,7 @@ class APIClient:
         try:
             logger.info(f"🔍 查询订单状态: {order_id}")
             console.print(Panel(f"[bold blue]正在查询订单[/bold blue]: {order_id}", border_style="blue"))
-            response = await self.client.get(f"/api/order/{order_id}")
+            response = await self.client.get(f"/api/orders/{order_id}")
             order_data = response.json()
 
             logger.info(f"✅ 订单查询成功: {order_id} -> {order_data['status']}")
