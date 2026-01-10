@@ -200,7 +200,7 @@ async def main_async():
     logger.info(f"📋 最终使用的订单ID: {order_id}")
 
     # 启动模拟服务
-    # server_process = await start_services()
+    server_process = await start_services()
 
     try:
         if args.use_autogen:
@@ -210,11 +210,10 @@ async def main_async():
             # 运行基础查询测试
             await run_query_test(query, order_id)
     finally:
-        pass
         # 关闭服务器进程
-        # if server_process:
-        #     server_process.terminate()
-        #     logger.info("FastAPI模拟服务已关闭")
+        if server_process:
+            server_process.terminate()
+            logger.info("FastAPI模拟服务已关闭")
 
     return 0
 
