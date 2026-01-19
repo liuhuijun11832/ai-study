@@ -204,7 +204,7 @@ def main():
     parser.add_argument(
         "--base_model",
         type=str,
-        default="Qwen/Qwen3-8B",
+        default="Qwen/Qwen3-4B",
         help="基础模型名称 (默认: Qwen/Qwen3-8B)"
     )
     

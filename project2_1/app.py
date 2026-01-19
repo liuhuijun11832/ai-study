@@ -20,7 +20,7 @@ app = FastAPI(
 # 模型配置
 MODEL_PATH = "./qwen3-intent-lora"
 LABEL_MAPPING_PATH = os.path.join(MODEL_PATH, "label_mapping.json")
-BASE_MODEL_NAME = "Qwen/Qwen3-8B"
+BASE_MODEL_NAME = "Qwen/Qwen3-4B"
 
 # 全局变量
 model = None

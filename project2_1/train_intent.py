@@ -12,7 +12,7 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # 配置参数
-MODEL_NAME = "Qwen/Qwen3-8B"
+MODEL_NAME = "Qwen/Qwen3-4B"
 OUTPUT_DIR = "./qwen3-intent-lora"
 MAX_LENGTH = 128
 BATCH_SIZE = 4
@@ -142,7 +142,7 @@ def main():
             per_device_eval_batch_size=BATCH_SIZE,
             num_train_epochs=EPOCHS,
             weight_decay=0.01,
-            evaluation_strategy="epoch",
+            eval_strategy="epoch",
             save_strategy="epoch",
             logging_dir=f"{OUTPUT_DIR}/logs",
             logging_steps=10,
