@@ -22,4 +22,7 @@ dependencies = [
 	"datasets",
 	"ragas",
 	"llama-index-vector-stores-elasticsearch",
+    "pandas",
+    "tabulate",
+    "pandas"
 ]
