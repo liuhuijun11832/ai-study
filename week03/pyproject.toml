@@ -23,6 +23,9 @@ dependencies = [
 	"ragas",
 	"llama-index-vector-stores-elasticsearch",
     "pandas",
-    "tabulate",
-    "pandas"
+    "tabulate"
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
