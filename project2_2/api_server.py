@@ -72,7 +72,7 @@ def load_model(model_path: str):
         logger.info("加载模型...")
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            dtype=torch.float16 if device == "cuda" else torch.float32,
             device_map="auto" if device == "cuda" else "cpu",
             trust_remote_code=True
         )

@@ -1,8 +1,10 @@
+import logging
 import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel, PeftConfig
 import argparse
+logger = logging.getLogger(__name__)
 
 def merge_lora_weights(
     base_model_path: str,
@@ -31,7 +33,7 @@ def merge_lora_weights(
         print(f"加载基础模型: {base_model_path}")
         base_model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             device_map=device,
             trust_remote_code=True
         )
@@ -41,7 +43,7 @@ def merge_lora_weights(
         model = PeftModel.from_pretrained(
             base_model,
             lora_model_path,
-            torch_dtype=torch.float16
+            dtype=torch.float16
         )
         
         # 4. 合并权重
@@ -85,7 +87,7 @@ def merge_lora_weights(
         test_model = AutoModelForCausalLM.from_pretrained(
             output_path,
             torch_dtype=torch.float16,
-            device_map="cpu",
+            device_map="cuda:0",
             trust_remote_code=True
         )
         print("模型验证成功!")
@@ -93,7 +95,7 @@ def merge_lora_weights(
         return True
         
     except Exception as e:
-        print(f"合并过程中出现错误: {str(e)}")
+        logger.exception(e)
         return False
 
 def compare_model_sizes(base_model_path: str, merged_model_path: str):
@@ -108,8 +110,8 @@ def compare_model_sizes(base_model_path: str, merged_model_path: str):
         # 计算基础模型参数量
         base_model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
-            torch_dtype=torch.float16,
-            device_map="cpu",
+            dtype=torch.float16,
+            device_map="cuda:0",
             trust_remote_code=True
         )
         base_params = sum(p.numel() for p in base_model.parameters())
@@ -117,8 +119,8 @@ def compare_model_sizes(base_model_path: str, merged_model_path: str):
         # 计算合并后模型参数量
         merged_model = AutoModelForCausalLM.from_pretrained(
             merged_model_path,
-            torch_dtype=torch.float16,
-            device_map="cpu",
+            dtype=torch.float16,
+            device_map="cuda:0",
             trust_remote_code=True
         )
         merged_params = sum(p.numel() for p in merged_model.parameters())
@@ -143,7 +145,7 @@ def main():
                        help="LoRA适配器路径")
     parser.add_argument("--output", type=str, default="./qwen-medical-qa-merged", 
                        help="合并后模型保存路径")
-    parser.add_argument("--device", type=str, default="auto", 
+    parser.add_argument("--device", type=str, default="cuda",
                        help="设备类型 (auto, cpu, cuda)")
     parser.add_argument("--compare", action="store_true", 
                        help="是否比较模型大小")

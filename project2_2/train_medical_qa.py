@@ -58,7 +58,7 @@ def load_medical_qa_data():
             texts, 
             truncation=True, 
             max_length=MAX_LENGTH,
-            padding=False,
+            padding=True,
             return_tensors=None
         )
         
@@ -106,7 +106,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_NAME,
             trust_remote_code=True,
-            device_map="auto",
+            device_map="cuda:0",
             quantization_config=BitsAndBytesConfig(load_in_4bit=True),
             dtype=torch.float16
         )
@@ -168,7 +168,8 @@ def main():
             train_dataset=dataset["train"],
             eval_dataset=dataset["test"],
             data_collator=data_collator,
-            tokenizer=tokenizer
+            #　这里不能使用tokenizer参数 https://github.com/huggingface/trl/releases/tag/v0.12.0
+            processing_class=tokenizer
         )
         
         # 开始训练
