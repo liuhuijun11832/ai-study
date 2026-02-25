@@ -1,6 +1,9 @@
 # pip install langchain_community datasets ragas
 
 import os
+
+from dotenv import load_dotenv
+
 os.environ['GIT_PYTHON_REFRESH'] = 'quiet'
 from langchain_community.llms.tongyi import Tongyi
 from langchain_community.embeddings import DashScopeEmbeddings
@@ -9,6 +12,8 @@ from ragas import evaluate
 from ragas.metrics import answer_correctness
 from ragas.metrics import context_recall, context_precision
 
+load_dotenv()
+print(os.getenv("DASHSCOPE_API_KEY"))
 data_samples = {
     'question': [
         '杭州最值得去的景点有哪些？',
