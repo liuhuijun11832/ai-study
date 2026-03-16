@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "jupyter",
-    "llama-index",
+    "llama-index==0.10.68",
     "llama-index-llms-openai-like",
     "llama-index-llms-dashscope",
     "llama-index-embeddings-dashscope",

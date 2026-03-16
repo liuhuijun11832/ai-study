@@ -1,5 +1,7 @@
 # RAG对话系统核心引擎 - 集成检索增强生成技术
 import os
+
+from dotenv import load_dotenv
 from openai import OpenAI
 from llama_index.core import StorageContext, load_index_from_storage, Settings
 from llama_index.embeddings.dashscope import (
@@ -7,7 +9,7 @@ from llama_index.embeddings.dashscope import (
     DashScopeTextEmbeddingModels,
     DashScopeTextEmbeddingType,
 )
-
+load_dotenv()
 # 重排序模块导入 - 采用优雅降级策略
 try:
     from llama_index.postprocessor.dashscope_rerank import DashScopeRerank
