@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from langchain_community.llms import Tongyi
 from langchain_core.output_parsers import StrOutputParser
 from ext_template import PersonInfoPromptTemplate, PersonInfo
@@ -106,7 +107,8 @@ if __name__ == "__main__":
     demo_custom_template()
     
     print("\n\n2. 与 LLM 结合使用")
-    # demo_with_llm()  # 需要配置 API Key
+    load_dotenv()
+    demo_with_llm()  # 需要配置 API Key
     
     print("\n\n3. 模板配置管理")
     demo_template_management()
